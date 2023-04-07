@@ -33,9 +33,8 @@ function M.setup(user_opts)
 	})
 
 	if opts.autostart then
-		vim.schedule(function()
-			require('theme-loader').start()
-		end)
+		-- Restore last used colorscheme, or set initial.
+		require('theme-loader').start()
 	end
 end
 
@@ -94,7 +93,7 @@ function M._get_last_colorscheme()
 		local raw = vim.loop.fs_read(fd, 256, 0) or ''
 		vim.loop.fs_close(fd)
 
-		raw = raw:gsub('\r', '')
+		raw = tostring(raw):gsub('\r', '')
 		want = vim.split(raw, '\n')[1]
 	end
 	if #want == 0 then
