@@ -1,0 +1,52 @@
+name: CI
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: stable
+      - run: make test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: JohnnyMorganz/stylua-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: latest
+          args: --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/action-setup-vim@v1
+        id: vim
+        with:
+          neovim: true
+          version: stable
+      - name: Install lua-language-server
+        run: |
+          mkdir -p "$RUNNER_TEMP/luals"
+          curl -sL "$(curl -s https://api.github.com/repos/LuaLS/lua-language-server/releases/latest \
+            | jq -r '.assets[] | select(.name | endswith("linux-x64.tar.gz")) | .browser_download_url')" \
+            | tar xz -C "$RUNNER_TEMP/luals"
+          echo "$RUNNER_TEMP/luals/bin" >> "$GITHUB_PATH"
+      - name: Type check
+        run: |
+          rt="$(nvim --clean --headless -c 'lua io.write(vim.env.VIMRUNTIME)' -c qa)"
+          cfg="$RUNNER_TEMP/luarc.json"
+          printf '{"runtime":{"version":"LuaJIT"},"workspace":{"library":["%s/lua"],"checkThirdParty":false}}' "$rt" > "$cfg"
+          lua-language-server --check lua --configpath="$cfg" --checklevel=Warning
