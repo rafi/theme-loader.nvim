@@ -121,16 +121,17 @@ local function write_atomic(path, content)
 	if not fd then
 		return false, err
 	end
-	local ok, werr = uv.fs_write(fd, content, 0)
+	local written, werr = uv.fs_write(fd, content, 0)
 	uv.fs_close(fd)
-	if ok then
-		ok, werr = uv.fs_rename(tmp, path)
+	if written then
+		local renamed, rerr = uv.fs_rename(tmp, path)
+		if renamed then
+			return true
+		end
+		werr = rerr
 	end
-	if not ok then
-		uv.fs_unlink(tmp)
-		return false, werr
-	end
-	return true
+	uv.fs_unlink(tmp)
+	return false, werr
 end
 
 -- Read and decode `json_file_path`. Returns nil when the option is unset,
@@ -167,7 +168,7 @@ function M.save_colorscheme()
 		return
 	end
 	local cfg = Config.get()
-	local path, content
+	local path, content ---@type string, string
 	local data = read_json()
 	if data then
 		if data.colorscheme == colorscheme then
@@ -175,8 +176,9 @@ function M.save_colorscheme()
 		end
 		data.colorscheme = colorscheme
 		local ok, json = pcall(vim.json.encode, data, { indent = '  ' })
-		path, content =
-			cfg.json_file_path, (ok and json or vim.json.encode(data)) .. '\n'
+		-- The JSON file exists, so the option is set.
+		path = cfg.json_file_path --[[@as string]]
+		content = (ok and json or vim.json.encode(data)) .. '\n'
 	else
 		if read_cache_file() == colorscheme then
 			return
