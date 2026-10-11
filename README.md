@@ -9,13 +9,25 @@ Features:
 - Set last-used colorscheme
 - Load user's custom highlights per colorscheme
 
+It works once installed, with no `setup()` call. Nothing is loaded until
+`VimEnter`.
+
 ## Install
 
 Requirements:
 
-- [Neovim] ≥0.8
+- [Neovim] ≥0.11
 
 Use your favorite package-manager:
+
+<details>
+<summary>With <code>vim.pack</code> (Neovim 0.12+)</summary>
+
+```lua
+vim.pack.add({ 'https://github.com/rafi/theme-loader.nvim' })
+```
+
+</details>
 
 <details>
 <summary>With <a href="https://github.com/folke/lazy.nvim">lazy.nvim</a></summary>
@@ -24,8 +36,8 @@ Use your favorite package-manager:
 {
   'rafi/theme-loader.nvim',
   version = false,
+  lazy = false,
   priority = 999,
-  opts = true,
 },
 ```
 
@@ -40,42 +52,68 @@ use { 'rafi/theme-loader.nvim' }
 
 </details>
 
-## Setup
-
-If you're using [lazy.nvim], set `config` or `opts` property (See
-[Install](#install) instructions).
-
-Otherwise, setup manually:
-
-```lua
-require('theme-loader').setup()
-```
-
 ## Config
 
-These are the default settings:
+Set `vim.g.theme_loader` before `VimEnter`. All fields are optional. Defaults:
 
 ```lua
-require('theme-loader').setup({
+vim.g.theme_loader = {
   autostart = true,
   initial_colorscheme = 'habamax',
   fallback_colorscheme = 'habamax',
-  cache_file_path = vim.fn.stdpath('data') .. '/theme.txt',
+  cache_file_path = vim.fn.stdpath('state') .. '/theme.txt',
   theme_directory = vim.fn.stdpath('config') .. '/themes',
-})
+  json_file_path = nil,
+}
 ```
+
+- `autostart`: restore the colorscheme in a one-shot `VimEnter` autocmd, so
+  all `colors/` directories are on `runtimepath` and `ColorScheme` autocmds
+  fire. If the plugin loads after startup, it restores immediately. Set it to
+  `false` and call `require('theme-loader').start()` to control the timing.
+- `json_file_path`: store the colorscheme in the `colorscheme` key of an
+  existing JSON file, such as `rafi.json` in
+  [Rafi's config](https://github.com/rafi/vim-config).
+
+`require('theme-loader').setup(opts)` merges `opts` into `vim.g.theme_loader`,
+so lazy.nvim `opts` work.
+
+An invalid field is reported once and its default is used.
+`:checkhealth theme-loader` shows config errors, unknown keys and the file
+the colorscheme is saved to.
+
+## Selecting the colorscheme
+
+At startup, the first available source is used:
+
+1. `vim.g.theme_colorscheme`, a non-empty string set before `start()` runs.
+2. The `colorscheme` key of the JSON file at `json_file_path`, if the file
+   exists and contains a JSON object.
+3. The text file at `cache_file_path`, if the JSON file doesn't exist.
+
+If the source is empty, `initial_colorscheme` is used. If loading fails,
+`fallback_colorscheme` is applied and an error is shown.
+
+## Saving the colorscheme
+
+A colorscheme change is saved to the JSON file if it exists, keeping its
+other keys, otherwise to the text file. The save runs after 250 ms without
+another change, so browsing a picker writes once and a cancelled preview
+writes nothing. A pending change is saved on exit. Files are written to a
+temporary file and renamed, so readers never see a partial file.
+
+Startup choices are not saved: a `vim.g.theme_colorscheme` override is
+one-off and a fallback doesn't replace the saved name. A colorscheme you
+select yourself is always saved.
 
 ## Themes (Override Colorschemes)
 
-If you'd like to easily override highlights for a certain colorscheme, create
-a file at `~/.config/nvim/themes/<name>.vim` (replace `<name>` with the
-colorscheme you'd like to override).
+To override highlights for a colorscheme, create `<name>.vim` or `<name>.lua`
+in `theme_directory` (default `~/.config/nvim/themes`), where `<name>` is the
+colorscheme name. The file is sourced after the colorscheme loads, so no
+`ColorScheme` autocmd is needed.
 
-For example, to add custom highlights for `nordic` colorscheme, create:
-
-- `~/.config/nvim/themes/nordic.vim`
-
-And start highlighting, there is **no** need to use `autocmd ColorScheme`:
+Example, `~/.config/nvim/themes/nordic.vim`:
 
 ```vim
 " My custom colors

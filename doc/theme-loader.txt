@@ -1,0 +1,151 @@
+*theme-loader.txt*  Restore the last-used colorscheme, load user themes
+
+==============================================================================
+CONTENTS                                               *theme-loader-contents*
+
+  1. Introduction ........................... |theme-loader-intro|
+  2. Configuration .......................... |theme-loader-config|
+  3. Selecting the colorscheme .............. |theme-loader-select|
+  4. Saving the colorscheme ................. |theme-loader-save|
+  5. User themes ............................ |theme-loader-themes|
+  6. Lua API ................................ |theme-loader-api|
+  7. Troubleshooting ........................ |theme-loader-health|
+
+==============================================================================
+1. INTRODUCTION                                           *theme-loader-intro*
+
+theme-loader.nvim applies the colorscheme you used last when Neovim starts,
+saves it whenever it changes, and sources your own highlight overrides for
+each colorscheme.
+
+It works once it is on 'runtimepath', with no `setup()` call. Its
+`plugin/` file only creates autocmds in the `theme_loader` group. The Lua
+module loads on |VimEnter| or on the first |ColorScheme|.
+
+The colorscheme is restored in a one-shot, nested |VimEnter| autocmd, so
+every plugin's `colors/` directory is on 'runtimepath' first and
+|ColorScheme| autocmds of other plugins still fire. If the plugin loads
+after startup, it restores on the next event loop tick.
+
+Requirements: Neovim 0.11+.
+
+==============================================================================
+2. CONFIGURATION                                         *theme-loader-config*
+
+                                                          *g:theme_loader*
+Set `vim.g.theme_loader` any time before |VimEnter|. Every field is
+optional. Defaults: >lua
+    vim.g.theme_loader = {
+      autostart = true,
+      initial_colorscheme = 'habamax',
+      fallback_colorscheme = 'habamax',
+      cache_file_path = vim.fn.stdpath('state') .. '/theme.txt',
+      theme_directory = vim.fn.stdpath('config') .. '/themes',
+      json_file_path = nil,
+    }
+<
+autostart                                   *theme-loader-config.autostart*
+    Restore the colorscheme on |VimEnter|. Set to false and call
+    |theme-loader.start()| yourself to pick the timing.
+
+initial_colorscheme                *theme-loader-config.initial_colorscheme*
+    Used when nothing was saved yet.
+
+fallback_colorscheme              *theme-loader-config.fallback_colorscheme*
+    Applied when the wanted colorscheme fails to load.
+
+cache_file_path                        *theme-loader-config.cache_file_path*
+    Plain-text file holding the last colorscheme name. Used when there is
+    no JSON file.
+
+theme_directory                        *theme-loader-config.theme_directory*
+    Directory of user themes, see |theme-loader-themes|.
+
+json_file_path                          *theme-loader-config.json_file_path*
+    A JSON file that holds the colorscheme in its `colorscheme` key,
+    instead of `cache_file_path`. Only used when the file exists. Other
+    keys in the file are kept. Unset by default.
+
+An invalid field is reported once with |vim.notify()|, naming it (e.g.
+`vim.g.theme_loader.autostart: expected boolean, got string`), and its
+default is used instead. |:checkhealth| shows it too.
+
+==============================================================================
+3. SELECTING THE COLORSCHEME                             *theme-loader-select*
+
+                                                       *g:theme_colorscheme*
+At startup, the first match wins:
+
+1. `vim.g.theme_colorscheme`, if set to a non-empty string. Set it before
+   |VimEnter|, e.g. in `init.lua`.
+2. The `colorscheme` key of `json_file_path`, if that file exists and holds
+   a valid JSON object.
+3. The first line of `cache_file_path`, if the JSON file doesn't exist.
+
+When the chosen source is empty, `initial_colorscheme` is used. If the
+colorscheme fails to load, `fallback_colorscheme` is applied and an error
+is shown.
+
+==============================================================================
+4. SAVING THE COLORSCHEME                                  *theme-loader-save*
+
+On |ColorScheme| the name in |g:colors_name| is saved to the JSON file if it
+exists, otherwise to `cache_file_path`. The save waits until no colorscheme
+change happened for 250ms, so scrolling a colorscheme picker writes once
+and a cancelled preview writes nothing. A change still waiting is saved on
+|VimLeavePre|.
+
+The file is written to a temp file next to it and renamed over it, so
+another Neovim starting meanwhile never reads half a file. A symlink is
+kept and its target replaced. A JSON file that doesn't parse is never
+overwritten: the name goes to `cache_file_path` instead.
+
+What startup applies is never saved: a |g:theme_colorscheme| override is a
+one-off, and the fallback doesn't replace the saved name. A colorscheme
+you pick is always saved, the fallback one included.
+
+==============================================================================
+5. USER THEMES                                           *theme-loader-themes*
+
+After each |ColorScheme|, theme-loader sources
+`<theme_directory>/<name>.vim` or `<name>.lua`, where `<name>` is
+|g:colors_name|. Use it to override highlights for one colorscheme,
+without an autocmd: >vim
+    " ~/.config/nvim/themes/nordic.vim
+    highlight User1 guifg=#D7D7BC guibg=#30302c ctermfg=251 ctermbg=236
+<
+==============================================================================
+6. LUA API                                                  *theme-loader-api*
+
+theme-loader.setup({opts})                            *theme-loader.setup()*
+    Merges {opts} into |g:theme_loader|. Kept for plugin managers and
+    configs that call it. Call it before |VimEnter|.
+
+theme-loader.start()                                  *theme-loader.start()*
+    Applies the colorscheme picked by |theme-loader-select|, or the
+    fallback. Runs on |VimEnter| unless `autostart` is false.
+
+theme-loader.last_colorscheme()            *theme-loader.last_colorscheme()*
+    Returns the name |theme-loader.start()| would apply.
+
+theme-loader.save_colorscheme()            *theme-loader.save_colorscheme()*
+    Saves |g:colors_name| now, see |theme-loader-save|.
+
+theme-loader.flush()                                  *theme-loader.flush()*
+    Saves a colorscheme change still waiting on its delay, now.
+
+theme-loader.load_user_theme()              *theme-loader.load_user_theme()*
+    Sources the user theme of |g:colors_name|, see |theme-loader-themes|.
+
+==============================================================================
+7. TROUBLESHOOTING                                       *theme-loader-health*
+
+Run `:checkhealth theme-loader`. It reports the Neovim version, config
+errors and unknown keys in |g:theme_loader|, which file the colorscheme is
+saved to and whether it can be read and written, any |g:theme_colorscheme|
+override, and the theme directory.
+
+To turn the plugin off, set `vim.g.loaded_theme_loader = true` before
+plugins load.
+
+ vim:tw=78:ts=8:noet:ft=help:norl:
